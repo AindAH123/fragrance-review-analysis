@@ -1,0 +1,300 @@
+---
+title: "Fragrance Review Analysis"
+author: "Aind"
+format: pdf
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+
+#| include: false
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(tidytext)
+reviews <- read_csv("fragrance_reviews_2018.csv")
+
+```
+
+## Introduction
+Fragrance is something I've always been interested in and when I am deciding what to buy price is usually one of the first things I look at. But I have also learned that a higher price does not always mean a better fragrance. I have tried fragrances around $100 that I preferred over ones costing $200 or $300 because of differences in qualities such as scent, projection, longevity and overall character. For example I recently bought a fragrance for around $180 that had very strong projection and lasted a long time but I still did not enjoy it because the scent felt too sharp for me. Every fragrance I use gives me a completely different and unique experience which makes me wonder what actually causes people to rate a fragrance highly or poorly. In this project I use Amazon fragrance reviews to investigate the words and characteristics associated with positive and negative ratings, focusing on qualities such as longevity, strength, and scent characteristics 
+
+## Rating Distribution
+
+Before comparing the language used in positive and negative reviews I first looked at how ratings are distributed in the dataset
+
+```{r}
+rating_counts <- reviews |>
+  count(rating)
+
+rating_counts
+```
+
+```{r}
+rating_counts |>
+  ggplot(aes(x = factor(rating), y = n)) +
+  geom_col() +
+  labs(
+    title = "Distribution of Fragrance Review Ratings",
+    x = "Star Rating",
+    y = "Number of Reviews"
+  )
+```
+The rating distribution is heavily concentrated at 5 stars, while the other rating categories contain far fewer reviews. This imbalance is important because simply comparing all ratings equally could make the positive reviews dominate the analysis. For later comparisons, I will therefore separate the reviews into broader rating groups rather than treating each star rating as equally represented
+
+```{r}
+# group ratings into broader categories for easier comparison
+new_scale <- reviews |>
+  mutate(
+    rating_group = ifelse(
+      rating <= 2, "Low",
+      ifelse(rating == 3, "Neutral", "High")
+    )
+  )
+```
+
+```{r}
+# remove neutral reviews so later analyses compare clearly positive vs. negative ratings
+compare_reviews <- new_scale |>
+  filter(rating_group != "Neutral")
+```
+
+
+## What Do Reviewers Talk About?
+To understand what characteristics people focus on when reviewing fragrances I first looked for common themes in the review text. I starterd with longevity since how long a fragrance lasts is often
+an important part of how people evaluate it
+
+
+```{r}
+# str_ function 1 and regex 1: detect longevity terms
+longevity_reviews <- compare_reviews |>
+  mutate(
+    mentions_longevity = str_detect(
+      str_to_lower(review_text),
+      "\\b(last|lasts|lasted|lasting|longevity|hour|hours)\\b"
+    )
+  )
+
+```
+
+```{r}
+longevity_reviews |>
+  group_by(rating_group) |>
+  summarise(
+    percent_longevity = mean(mentions_longevity) * 100
+  )
+```
+
+Longevity appears more frequently in low rated reviews than in high rated reviews about 21.8% of low rated reviews mention longevity related terms compared with 12.3% of high rated ones. This suggest that longevity may be especially important when reviewers are dissatisfied although this analysis does not yet show whether the longevity comments themselves are postitive or negative
+
+
+```{r}
+# regex 2: detect strength terms
+
+strength_reviews <- compare_reviews |>
+  mutate(
+    mentions_strength = str_detect(
+      str_to_lower(review_text),
+      "\\b(projection|strong|weak|overpowering|powerful|intense)\\b"
+    )
+  )
+```
+
+```{r}
+strength_reviews |>
+  group_by(rating_group) |>
+  summarise(
+    percent_strength = mean(mentions_strength) * 100
+  )
+```
+Strength related terms appear slightly more often in low rated reviews than in high rated reviews. About 9.2 percent of low rated reviews mention words related to strength or projection. About 7.2 percent of high rated reviews mention those terms. The difference is smaller than the difference found for longevity. This suggests that strength may matter but it does not separate positive and negative reviews as clearly
+
+```{r}
+review_words <- compare_reviews |>
+  unnest_tokens(word, review_text) |>
+  anti_join(stop_words) |>
+  count(word, sort = TRUE)
+
+```
+
+```{r}
+review_words |>
+  filter(word %in% c(
+    "clean", "fresh", "sweet", "floral",
+    "woody", "spicy", "powdery", "citrus",
+    "musky", "vanilla"
+  )) |>
+  arrange(desc(n))
+```
+
+
+```{r}
+scent_reviews <- compare_reviews |>
+  mutate(
+    mentions_scent = str_detect(
+      str_to_lower(review_text),
+      "\\b(clean|fresh|sweet|floral|vanilla|citrus|spicy|musky|powdery|woody)\\b"
+    )
+  )
+```
+
+```{r}
+scent_reviews |>
+  group_by(rating_group) |>
+  summarise(
+    percent_scent = mean(mentions_scent) * 100
+  )
+```
+
+Scent related terms appear more often in high rated reviews than in low rated reviews. About 15.0 percent of high rated reviews mention one of the scent characteristics compared with about 8.3 percent of low rated reviews. This is the opposite pattern from longevity where low rated reviews mentioned the topic more often. This suggests that positive reviewers may be more likely to describe the actual scent characteristics while negative reviewers focus more on problems such as performance or longevity.
+
+
+
+## Vocabulary Across Star Ratings
+
+After looking at specific fragrance characteristics I wanted to compare the vocabulary used in high rated and low rated reviews more broadly. This can show which words are especially associated with positive or negative experiences
+
+
+```{r}
+# find distinctive vocabulary across star ratings
+rating_words_5 <- reviews |>
+  unnest_tokens(word, review_text) |>
+  anti_join(stop_words) |>
+  filter(str_detect(word, "^[a-z]+$")) |>
+  filter(!word %in% c(
+    "return", "returns", "returned",
+    "refund", "amazon", "shipping",
+    "seller", "hazardous"
+  )) |>
+  count(rating, word)
+```
+
+```{r}
+# Text analysis application 1: TF-IDF
+rating_tfidf_5 <- rating_words_5 |>
+  bind_tf_idf(
+    term = word,
+    document = rating,
+    n = n
+  )
+```
+
+
+```{r}
+rating_tfidf_5 |>
+  filter(n >= 10, tf_idf > 0) |>
+  group_by(rating) |>
+  slice_max(tf_idf, n = 10, with_ties = FALSE)
+```
+
+
+The vocabulary changes across star ratings. One star reviews contain strongly negative words such as wasted, trash, garbage, stinks, imitation and dissatisfied. Three star reviews use more descriptive fragrance terms such as fruit, sillage, bergamot and crisp, while four star reviews include words such as everyday, daytime, season and elegant. Five star reviews contain more strongly positive words such as excellent, exquisite, unbeatable and smooth. Two star reviews did not contain high frequency words with a positive TF IDF value after filtering, suggesting that their common vocabulary was less distinctive from the other rating groups
+
+## Sentiment Analysis
+The previous analyses focused on specific words and fragrance characteristics. I next wanted to see whether the overall emotional tone of the review text changes with the star rating
+
+```{r}
+# match review words with the Bing sentiment lexicon
+# Text analysis application 2: Bing sentiment analysis
+sentiment_words <- reviews |>
+  mutate(review_id = row_number()) |>
+  select(review_id, rating, review_text) |>
+  unnest_tokens(word, review_text) |>
+  inner_join(get_sentiments("bing"))
+```
+
+```{r}
+# calculate the percent of positive and negative words by rating
+sentiment_summary <- sentiment_words |>
+  count(rating, sentiment) |>
+  group_by(rating) |>
+  mutate(
+    percent = n / sum(n) * 100
+  )
+
+sentiment_summary
+```
+
+```{r}
+sentiment_summary |>
+  filter(sentiment == "positive") |>
+  ggplot(aes(x = factor(rating), y = percent)) +
+  geom_col() +
+  labs(
+    title = "Positive Sentiment Increases With Star Rating",
+    x = "Star Rating",
+    y = "Percent of Sentiment Words That Are Positive"
+  )
+```
+
+Positive sentiment increases consistently as the star rating increases. About 41.5 percent of sentiment words in 1 star reviews are positive compared with about 54.6 percent for 2 star reviews and 63.0 percent for 3 star reviews. The percentage continues to increase to about 72.5 percent for 4 star reviews and 77.5 percent for 5 star reviews. This shows that the language used in the written reviews generally agrees with the numerical star ratings. Higher ratings are associated with more positive language while lower ratings contain a larger share of negative language
+
+
+## How Long Do Fragrances Actually Last?
+
+Since longevity appeared more often in low rated reviews I wanted to look more closely at what reviewers actually reported. Some reviews include specific durations such as hours or minutes which makes it possible to compare reported fragrance longevity across star ratings
+
+```{r}
+
+# extract specific longevity durations and compare them across ratings
+# str_ function 3 and regex 3: extract reported longevity
+
+duration_reviews <- reviews |>
+  mutate(
+    longevity_phrase = str_extract(
+      str_to_lower(review_text),
+      "\\b(last|lasts|lasted|lasting)[^.!?]{0,30}\\d+(?:\\.\\d+)?\\s*(hours?|hrs?|minutes?|mins?)\\b"
+    ),
+    duration_text = str_extract(
+      longevity_phrase,
+      "\\d+(?:\\.\\d+)?\\s*(hours?|hrs?|minutes?|mins?)"
+    )
+  )
+
+duration_by_rating <- duration_reviews |>
+  filter(!is.na(duration_text)) |>
+  count(rating, duration_text) |>
+  group_by(rating) |>
+  mutate(
+    percent = n / sum(n) * 100
+  ) |>
+  filter(duration_text %in% c(
+    "4 hours", "8 hours", "5 hours", "2 hours",
+    "30 minutes", "6 hours", "3 hours", "15 minutes"
+  ))
+```
+
+
+
+```{r}
+#| fig-alt: "Faceted bar chart showing reported fragrance longevity for ratings from 1 to 5 stars. The x-axis shows reported durations from 15 minutes to 8 hours and the y-axis shows the percent of reported durations. Lower ratings contain more mentions of short durations such as 15 and 30 minutes, while 5-star reviews contain more mentions of longer durations from 4 to 8 hours."
+
+duration_by_rating |>
+  mutate(
+    duration_short = duration_text |>
+      str_replace_all(" hours", " h") |>
+      str_replace_all(" hour", " h") |>
+      str_replace_all(" minutes", " min") |>
+      str_replace_all(" minute", " min")
+  ) |>
+  ggplot(aes(x = duration_short, y = percent)) +
+  geom_col() +
+  facet_wrap(~ rating) +
+  labs(
+    title = "Reported Fragrance Longevity by Star Rating",
+    x = "Reported Longevity",
+    y = "Percent of Reported Durations"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 7)
+  )
+```
+
+Reported longevity changes across star ratings. Lower rated reviews contain more mentions of very short durations such as 15 and 30 minutes, while higher rated reviews more often mention several hours of longevity. Five star reviews especially contain more mentions of durations between 4 and 8 hours. This supports the earlier finding that longevity plays an important role in fragrance satisfaction because reviewers who report very short performance are more likely to give lower ratings
+
+## Conclusion
+
+Overall the analysis shows that fragrance ratings are connected to both the scent itself and how well the fragrance performs. High rated reviews were more likely to mention scent characteristics while low rated reviews mentioned longevity and strength more often. The sentiment analysis also showed a clear increase in positive language as star ratings increased. Looking more closely at longevity showed that lower ratings were more associated with very short durations while higher ratings more often mentioned several hours of performance. This suggests that enjoying the scent is important but performance, especially longevity, can play a major role in whether a reviewer is satisfied with a fragrance
