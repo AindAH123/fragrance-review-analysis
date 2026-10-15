@@ -3,6 +3,7 @@ title: "Fragrance Review Analysis"
 author: "Aind"
 format: pdf
 execute:
+  echo: false
   warning: false
   message: false
 ---
@@ -29,8 +30,6 @@ Before comparing the language used in positive and negative reviews I first look
 ```{r}
 rating_counts <- reviews |>
   count(rating)
-
-rating_counts
 ```
 
 ```{r}
@@ -81,6 +80,8 @@ longevity_reviews <- compare_reviews |>
 ```
 
 ```{r}
+#| output: false
+
 longevity_reviews |>
   group_by(rating_group) |>
   summarise(
@@ -92,7 +93,7 @@ Longevity appears more frequently in low rated reviews than in high rated review
 
 
 ```{r}
-# regex 2: detect strength terms
+#regex 2: detect strength terms
 
 strength_reviews <- compare_reviews |>
   mutate(
@@ -104,6 +105,9 @@ strength_reviews <- compare_reviews |>
 ```
 
 ```{r}
+#| output: false
+
+
 strength_reviews |>
   group_by(rating_group) |>
   summarise(
@@ -121,6 +125,8 @@ review_words <- compare_reviews |>
 ```
 
 ```{r}
+#| output: false
+
 review_words |>
   filter(word %in% c(
     "clean", "fresh", "sweet", "floral",
@@ -142,6 +148,8 @@ scent_reviews <- compare_reviews |>
 ```
 
 ```{r}
+#| output: false
+
 scent_reviews |>
   group_by(rating_group) |>
   summarise(
@@ -215,7 +223,6 @@ sentiment_summary <- sentiment_words |>
     percent = n / sum(n) * 100
   )
 
-sentiment_summary
 ```
 
 ```{r}
